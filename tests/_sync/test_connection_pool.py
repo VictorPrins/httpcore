@@ -830,3 +830,65 @@ def test_http11_upgrade_connection():
         "http11.response_closed.started",
         "http11.response_closed.complete",
     ]
+
+
+
+def test_keepalive_idle_connections():
+    """
+    With max_keepalive_connections=1 and max_connections=5, after making 2 requests
+    and reading 1 response, we should have 1 IDLE and 1 ACTIVE connection.
+    The IDLE connection should NOT be closed because we're under the keepalive limit.
+    """
+    network_backend = httpcore.MockBackend(
+        [
+            # First request/response
+            b"HTTP/1.1 200 OK\r\n",
+            b"Content-Type: plain/text\r\n",
+            b"Content-Length: 13\r\n",
+            b"\r\n",
+            b"Hello, world!",
+            # Second request/response
+            b"HTTP/1.1 200 OK\r\n",
+            b"Content-Type: plain/text\r\n",
+            b"Content-Length: 13\r\n",
+            b"\r\n",
+            b"Hello, world!",
+        ]
+    )
+
+    with httpcore.ConnectionPool(
+        network_backend=network_backend,
+        max_connections=5,  # Allow multiple connections
+        max_keepalive_connections=1,  # But only keep 1 idle
+        keepalive_expiry=10.0,  # Long timeout to avoid expiry issues
+        http1=True,
+        http2=False,
+    ) as pool:
+        with pool.stream("GET", "https://example.com/") as response1:
+            with pool.stream("GET", "https://example.com/") as response2:
+                # At this point, both connections are ACTIVE and both requests are ACTIVE
+                assert (
+                    repr(pool)
+                    == "<ConnectionPool [Requests: 2 active, 0 queued | Connections: 2 active, 0 idle]>"
+                )
+                # CRITICAL: Must read response to allow h11 state machine to progress to DONE
+                response2.read()
+
+            # After finishing one request, we should have:
+            # - 1 ACTIVE connection
+            # - 1 IDLE connection
+            # The IDLE connection should NOT be closed because idle_count (1) <= max_keepalive_connections (1)
+            assert (
+                repr(pool)
+                == "<ConnectionPool [Requests: 1 active, 0 queued | Connections: 1 active, 1 idle]>"
+            )
+
+            # Read response to allow state machine to progress to DONE
+            response1.read()
+
+        # After both responses are complete, we have 2 idle connections
+        # but the cleanup logic should close 1 to respect max_keepalive_connections=1
+        assert (
+            repr(pool)
+            == "<ConnectionPool [Requests: 0 active, 0 queued | Connections: 0 active, 1 idle]>"
+        )
