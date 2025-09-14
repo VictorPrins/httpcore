@@ -87,6 +87,9 @@ async def test_available_connections_reassigned():
             await response1.aread()
             await response1.aclose()
 
+            # Give a short time for the pool to assign the freed-up connection to the queued request
+            await anyio.sleep(0.01)
+
             # After finishing the first request, the pool automatically assigns requests
             # from the request queue to available connections.
             # At this point, we should have:
