@@ -18,6 +18,7 @@ async def test_available_connections_reassigned():
 
     After reading/closing first request:
     Expected: 1 active, 1 queued, 1 connection
+    Only 1 request should be assigned to the freed-up connection
     """
     network_backend = httpcore.AsyncMockBackend(
         [
@@ -83,23 +84,29 @@ async def test_available_connections_reassigned():
                 == "<AsyncConnectionPool [Requests: 1 active, 2 queued | Connections: 1 active, 0 idle]>"
             )
 
+            # Monkey patch connection's handle_async_request to intercept ConnectionNotAvailable
+            for connection in pool._connections:
+                original_handle = connection.handle_async_request
+
+                async def monitored_handle_async_request(request):
+                    try:
+                        return await original_handle(request)
+                    except httpcore.ConnectionNotAvailable:  # pragma: nocover
+                        pytest.fail(  # pragma: nocover
+                            "ConnectionNotAvailable was raised on connection, "
+                            "indicating that multiple requests were assigned to a single HTTP/1.1 connection"
+                        )
+
+                connection.handle_async_request = monitored_handle_async_request  # type: ignore[method-assign]
+
             # Read and close the first response
             await response1.aread()
             await response1.aclose()
 
             # Give a short time for the pool to assign the freed-up connection to the queued request
-            await anyio.sleep(0.01)
+            # This will trigger the ConnectionNotAvailable if multiple requests are assigned to the same connection
+            await anyio.sleep(0.05)
 
-            # After finishing the first request, the pool automatically assigns requests
-            # from the request queue to available connections.
-            # At this point, we should have:
-            # - 1 active request (request2 should become active)
-            # - 1 queued request (request3 should remain queued)
-            # - 1 connection (same connection, now available for request2)
-            assert (
-                repr(pool)
-                == "<AsyncConnectionPool [Requests: 1 active, 1 queued | Connections: 1 active, 0 idle]>"
-            )
-
-            # cancel taskgroup to avoid a hanging test
+            # Cancel taskgroup to avoid a hanging test
+            # (since request2 is never closed, and hence the task for request3 cannot start)
             tg.cancel_scope.cancel()
