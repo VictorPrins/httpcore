@@ -13,12 +13,6 @@ from .._synchronization import Event, ShieldCancellation, ThreadLock
 from .connection import HTTPConnection
 from .interfaces import ConnectionInterface, RequestInterface
 
-try:
-    from .http2 import HTTP2Connection
-except ImportError:  # pragma: nocover
-    # ImportError happens when the user installed httpcore without the optional http2 dependency
-    HTTP2Connection = None  # type: ignore[assignment, misc]
-
 
 class PoolRequest:
     def __init__(self, request: Request) -> None:

@@ -13,12 +13,6 @@ from .._synchronization import AsyncEvent, AsyncShieldCancellation, AsyncThreadL
 from .connection import AsyncHTTPConnection
 from .interfaces import AsyncConnectionInterface, AsyncRequestInterface
 
-try:
-    from .http2 import AsyncHTTP2Connection
-except ImportError:  # pragma: nocover
-    # ImportError happens when the user installed httpcore without the optional http2 dependency
-    AsyncHTTP2Connection = None  # type: ignore[assignment, misc]
-
 
 class AsyncPoolRequest:
     def __init__(self, request: Request) -> None:
