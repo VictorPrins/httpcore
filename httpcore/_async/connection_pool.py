@@ -15,7 +15,7 @@ from .interfaces import AsyncConnectionInterface, AsyncRequestInterface
 
 try:
     from .http2 import AsyncHTTP2Connection
-except ImportError:
+except ImportError:  # pragma: nocover
     # ImportError happens when the user installed httpcore without the optional http2 dependency
     AsyncHTTP2Connection = None  # type: ignore[assignment, misc]
 
@@ -303,7 +303,7 @@ class AsyncConnectionPool(AsyncRequestInterface):
                 # Available connections
                 available_conns.append(conn)
                 # Track HTTP/2 connection capacity
-                if self._http2 and isinstance(conn, AsyncHTTP2Connection):
+                if self._http2:
                     # Get the actual available stream count from the connection
                     http2_conn_stream_capacity[conn] = (
                         conn.get_available_stream_capacity()
